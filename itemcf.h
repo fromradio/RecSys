@@ -10,9 +10,12 @@
 #include <cmath>
 #include <set>
 #include <list>
+#include <algorithm>
 
 inline void readTrainData(const std::string& filename,std::vector<std::vector<std::pair<int,double> > >& sortedscore,std::vector<std::set<int> >& vitems)
 {
+	float alpha = 0.01;
+
 	std::vector<std::map<int,double> > score;
 	std::string line;
 	std::fstream infile(filename);
@@ -22,6 +25,11 @@ inline void readTrainData(const std::string& filename,std::vector<std::vector<st
 	int numitem = -1;
 	int numuser = -1;
 	int user,item;
+
+	std::map<int,int> tnum;
+	float rating;
+	int t;
+
 	while(std::getline(infile,line))
 	{
 		std::istringstream iss(line);
@@ -41,7 +49,8 @@ inline void readTrainData(const std::string& filename,std::vector<std::vector<st
 	{
 		std::istringstream iss(line);
 		
-		iss>>user>>item;
+		iss>>user>>item>>rating>>t;
+		tnum[item] = t;
 		if(curruser!=user)
 		{
 			// handle current list
@@ -54,11 +63,13 @@ inline void readTrainData(const std::string& filename,std::vector<std::vector<st
 						if(score[i].find(j)==score[i].end())
 						{
 							// score[i][j]=1.0/(log(1.0+itemlist.size()));
-							score[i][j]=1;
+							// score[i][j]=1;
+							score[i][j] = 1.0/(1.0+alpha*abs(tnum[i]-tnum[j]));
 						}
 						else{
-							score[i][j]+=1;
+							// score[i][j]+=1;
 							// score[i][j]+=1.0/(log(1.0+itemlist.size()));;
+							score[i][j] += 1.0/(1.0+alpha*abs(tnum[i]-tnum[j]));
 						}
 					}
 				}
@@ -83,10 +94,12 @@ inline void readTrainData(const std::string& filename,std::vector<std::vector<st
 			{
 				if(score[i].find(j)==score[i].end())
 				{
-					score[i][j]=1;
+					// score[i][j]=1;
+					score[i][j] = 1.0/(1.0+alpha*abs(tnum[i]-tnum[j]));
 				}
 				else{
-					score[i][j]+=1;
+					// score[i][j]+=1;
+					score[i][j] += 1.0/(1.0+alpha*abs(tnum[i]-tnum[j]));
 				}
 			}
 		}
@@ -266,13 +279,62 @@ void testRecommendation(const std::vector<std::set<int> >& vitems,
 {
 	double mean_precision = 0.0;
 	double mean_recall = 0.0;
+
+	double coverage = 0.0;
+	double popularity = 0.0;
+
 	std::cout<<"there are "<<testitems.size()<<" test users"<<std::endl;
+	
+	std::set<int> allrecs;
+	std::set<int> allitems;
+	int maxnum = 0;
+
+	for( int j = 0 ; j < vitems.size() ; ++j )
+	{
+		std::set<int>::iterator it2;
+		for ( it2 =  vitems[j].begin() ; it2 != vitems[j].end() ; it2++ )
+		{
+			allitems.insert(*it2);
+			if (maxnum<*it2)
+				maxnum = *it2;
+		}
+	}
+	maxnum += 1;
+
+	std::vector<int> po(maxnum);
+	for ( int j = 0 ; j < maxnum ; ++j )
+		po[j] = 0;
+
+	for ( int j = 0 ; j < vitems.size() ; ++j )
+	{
+		std::set<int>::iterator it2;
+		for ( it2 =  vitems[j].begin() ; it2 != vitems[j].end() ; it2++ )
+		{
+			po[*it2] += 1;
+		}
+
+	}
+
 	for ( int i = 0 ; i < testitems.size() ; ++ i )
 	{
 		std::set<int> rec;
 		recommendation(vitems,score,i,k,cutoff,rec);
 		mean_precision += precision(rec,testitems[i]);
 		mean_recall += recall(rec,testitems[i]);
+
+		int n = 0;
+		double ret = 0.0;
+		std::set<int>::iterator it;
+		for ( it = rec.begin() ; it != rec.end() ; it++ )
+		{
+			allrecs.insert(*it);
+			ret += log( 1 + po[*it] );
+			n += 1;
+		}
+
+		ret /= n * 1.0;
+		popularity += ret; 
+
 		if(i%1000==0)
 			std::cout<<i<<" users are done"<<std::endl;
 	}
@@ -280,6 +342,11 @@ void testRecommendation(const std::vector<std::set<int> >& vitems,
 	mean_recall/=testitems.size();
 	std::cout<<"mean_precision is "<<mean_precision<<std::endl;
 	std::cout<<"mean_recall is "<<mean_recall<<std::endl;
+
+	coverage = allrecs.size()/(allitems.size()*1.0);
+	std::cout<<"coverage is "<<coverage<<std::endl;
+	popularity /= testitems.size();
+	std::cout<<"popularity is "<<popularity<<std::endl;
 }
 
 
